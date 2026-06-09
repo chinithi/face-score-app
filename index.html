@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 顔偏差値診断 - AI Facial Analyzer</title>
+    
+    <!-- Meta tags for SEO -->
+    <meta name="description" content="AIを活用して顔の特徴、対称性、黄金比率を分析し、あなたの顔偏差値と詳細なパーソナル美容アドバイスを診断する無料Webアプリです。">
+    <meta name="keywords" content="顔偏差値, 顔タイプ診断, 美容アドバイス, 黄金比, AI顔診断, カメラ診断">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&family=Noto+Sans+JP:wght@300;400;500;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Chart.js for Radar Chart -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background Grid and Glows -->
+    <div class="bg-grid"></div>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <div class="app-container">
+        <!-- Header Section -->
+        <header class="app-header">
+            <div class="header-logo">
+                <i class="fa-solid fa-microchip neon-text"></i>
+                <span class="logo-title">AI FACIAL ANALYZER</span>
+            </div>
+            <div class="system-status">
+                <span class="status-indicator-dot"></span>
+                <span class="status-text" id="systemStatus">SYSTEM: ACTIVE</span>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            
+            <!-- SECTION 1: HOME/WELCOME -->
+            <section id="sectionHome" class="app-section active">
+                <div class="hero-container">
+                    <div class="hero-badge">AI FACIAL APPRASIAL SYSTEM</div>
+                    <h1 class="hero-title">顔偏差値 &<br><span class="gradient-text">パーソナル分析</span></h1>
+                    <p class="hero-description">
+                        最先端のAI骨格スキャンシミュレーションにより、顔の対称性、黄金比率、目鼻立ちのバランスを精密に測定します。自分に一番似合うスタイルを見つけましょう。
+                    </p>
+                    
+                    <div class="action-cards">
+                        <!-- Camera Card -->
+                        <div class="action-card" id="btnStartCamera">
+                            <div class="card-icon">
+                                <i class="fa-solid fa-camera"></i>
+                            </div>
+                            <h3>カメラでリアルタイム測定</h3>
+                            <p>カメラを起動してその場で表情とバランスをスキャンします。</p>
+                            <span class="card-action-btn">スキャナー起動 <i class="fa-solid fa-chevron-right"></i></span>
+                        </div>
+                        
+                        <!-- File Upload Card -->
+                        <div class="action-card" id="btnStartUpload">
+                            <div class="card-icon">
+                                <i class="fa-solid fa-file-arrow-up"></i>
+                            </div>
+                            <h3>写真ファイルから測定</h3>
+                            <p>アルバムの写真や保存した画像ファイルをアップロードして診断します。</p>
+                            <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                            <span class="card-action-btn">ファイルを選択 <i class="fa-solid fa-chevron-right"></i></span>
+                        </div>
+                    </div>
+
+                    <div class="privacy-note">
+                        <i class="fa-solid fa-shield-halved"></i>
+                        <span>プライバシー保護: 画像データはサーバーへ一切送信されず、端末内のみで安全に処理されます。</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 2: SCANNER -->
+            <section id="sectionScanner" class="app-section">
+                <div class="scanner-grid">
+                    <!-- Left: Camera Viewport / Image Preview -->
+                    <div class="scanner-viewport-container">
+                        <div class="viewport-wrapper">
+                            <!-- Video elements for Camera -->
+                            <video id="webcamVideo" autoplay playsinline muted></video>
+                            
+                            <!-- Canvas overlay for detected landmarks & laser lines -->
+                            <canvas id="scannerCanvas"></canvas>
+                            
+                            <!-- Static guidance overlay (face guide oval) -->
+                            <div class="face-guide-oval">
+                                <div class="guide-corner tl"></div>
+                                <div class="guide-corner tr"></div>
+                                <div class="guide-corner bl"></div>
+                                <div class="guide-corner br"></div>
+                                <span class="guide-text">枠内に顔を合わせてください</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Scanning state bar overlay (laser bar) -->
+                        <div class="laser-bar" id="laserBar"></div>
+                    </div>
+
+                    <!-- Right: Control Panel & Live Logs -->
+                    <div class="control-panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fa-solid fa-circle-nodes"></i> SCANNING CONSOLE</span>
+                            <span class="log-indicator">LIVE</span>
+                        </div>
+                        
+                        <!-- Terminal logs -->
+                        <div class="terminal-logs" id="terminalLogs">
+                            <div class="log-line text-muted">[INIT] Console loaded... Ready for input.</div>
+                        </div>
+
+                        <!-- Panel Buttons -->
+                        <div class="panel-buttons">
+                            <button id="btnTriggerScan" class="btn btn-primary btn-glow disabled">
+                                <i class="fa-solid fa-bolt"></i> スキャン開始
+                            </button>
+                            <button id="btnCancelScan" class="btn btn-secondary">
+                                <i class="fa-solid fa-arrow-left"></i> キャンセル
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 3: RESULT -->
+            <section id="sectionResult" class="app-section">
+                <div class="result-layout">
+                    
+                    <!-- Left Column: Certificate Header and Dynamic Summary Card -->
+                    <div class="result-sidebar">
+                        <div class="card glass-card result-preview-card">
+                            <div class="card-inner-frame">
+                                <div class="scan-snapshot-container">
+                                    <!-- Snapshot canvas of user face with scan line/landmarks drawn -->
+                                    <canvas id="snapshotCanvas"></canvas>
+                                </div>
+                                <div class="face-type-badge" id="faceTypeBadge">王道美形タイプ</div>
+                                <div class="result-score-block">
+                                    <span class="score-label">顔偏差値</span>
+                                    <span class="score-number" id="scoreNumber">0.0</span>
+                                </div>
+                                <div class="result-grade" id="resultGrade">GRADE: A+</div>
+                            </div>
+                        </div>
+                        
+                        <div class="action-row">
+                            <button id="btnSaveCard" class="btn btn-primary btn-block">
+                                <i class="fa-solid fa-download"></i> 診断結果画像を保存
+                            </button>
+                            <button id="btnRestart" class="btn btn-secondary btn-block">
+                                <i class="fa-solid fa-rotate-left"></i> もう一度測定する
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Interactive Analysis Reports & Advice Tabs -->
+                    <div class="result-details">
+                        <!-- Navigation tabs -->
+                        <div class="tabs-nav">
+                            <button class="tab-btn active" data-tab="tabStatus">
+                                <i class="fa-solid fa-chart-pie"></i> 詳細骨格分析
+                            </button>
+                            <button class="tab-btn" data-tab="tabAdvice">
+                                <i class="fa-solid fa-sparkles"></i> 美容 & スタイリング提案
+                            </button>
+                        </div>
+
+                        <!-- Tab Content 1: Radar Chart and Feature scores -->
+                        <div class="tab-content active" id="tabStatus">
+                            <div class="status-grid">
+                                <div class="chart-container">
+                                    <canvas id="radarChart"></canvas>
+                                </div>
+                                
+                                <div class="scores-list">
+                                    <!-- Detail Score item -->
+                                    <div class="score-item">
+                                        <div class="score-item-header">
+                                            <span class="score-item-title">左右対称性 (Symmetry)</span>
+                                            <span class="score-item-val" id="valSymmetry">0%</span>
+                                        </div>
+                                        <div class="progress-track"><div class="progress-bar" id="barSymmetry" style="width: 0%"></div></div>
+                                    </div>
+                                    
+                                    <div class="score-item">
+                                        <div class="score-item-header">
+                                            <span class="score-item-title">黄金比率 (Golden Ratio)</span>
+                                            <span class="score-item-val" id="valGolden">0%</span>
+                                        </div>
+                                        <div class="progress-track"><div class="progress-bar" id="barGolden" style="width: 0%"></div></div>
+                                    </div>
+                                    
+                                    <div class="score-item">
+                                        <div class="score-item-header">
+                                            <span class="score-item-title">目元の比率 (Eye Balance)</span>
+                                            <span class="score-item-val" id="valEyes">0%</span>
+                                        </div>
+                                        <div class="progress-track"><div class="progress-bar" id="barEyes" style="width: 0%"></div></div>
+                                    </div>
+                                    
+                                    <div class="score-item">
+                                        <div class="score-item-header">
+                                            <span class="score-item-title">鼻すじ・角度 (Nasal Line)</span>
+                                            <span class="score-item-val" id="valNose">0%</span>
+                                        </div>
+                                        <div class="progress-track"><div class="progress-bar" id="barNose" style="width: 0%"></div></div>
+                                    </div>
+                                    
+                                    <div class="score-item">
+                                        <div class="score-item-header">
+                                            <span class="score-item-title">口元バランス (Mouth Balance)</span>
+                                            <span class="score-item-val" id="valMouth">0%</span>
+                                        </div>
+                                        <div class="progress-track"><div class="progress-bar" id="barMouth" style="width: 0%"></div></div>
+                                    </div>
+
+                                    <div class="score-item">
+                                        <div class="score-item-header">
+                                            <span class="score-item-title">フェイスライン (Jaw & Contour)</span>
+                                            <span class="score-item-val" id="valContour">0%</span>
+                                        </div>
+                                        <div class="progress-track"><div class="progress-bar" id="barContour" style="width: 0%"></div></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tab Content 2: Stylist Advice -->
+                        <div class="tab-content" id="tabAdvice">
+                            <div class="advice-container">
+                                <div class="advice-card highlight-advice">
+                                    <div class="advice-header">
+                                        <i class="fa-solid fa-quote-left advice-icon"></i>
+                                        <h4 id="adviceSummaryTitle">総合的な魅力の分析</h4>
+                                    </div>
+                                    <p id="adviceSummaryText">顔のパーツ配置を測定した結果、非常にバランスの整った骨格を持っています。特に目と鼻の位置関係は黄金比率に近く、知的で端正な印象を与えます。</p>
+                                </div>
+
+                                <div class="advice-tabs-grid">
+                                    <!-- Tip 1: Hair -->
+                                    <div class="advice-subcard">
+                                        <div class="subcard-header">
+                                            <i class="fa-solid fa-scissors subcard-icon"></i>
+                                            <h5>おすすめのヘアスタイル</h5>
+                                        </div>
+                                        <p id="adviceHair">顔立ちの良さを引き立てるため、額を少し見せたアップバングや、輪郭ラインをシャープに見せるサイドすっきりのカットが似合います。</p>
+                                    </div>
+                                    
+                                    <!-- Tip 2: Eyebrows/Makeup -->
+                                    <div class="advice-subcard">
+                                        <div class="subcard-header">
+                                            <i class="fa-solid fa-pen-nib subcard-icon"></i>
+                                            <h5>眉・メイクのアドバイス</h5>
+                                        </div>
+                                        <p id="adviceEyebrows">眉頭から眉尻にかけて自然なアーチを描く平行眉に整えることで、顔の対称性がさらに強調され、洗練された雰囲気を醸し出せます。</p>
+                                    </div>
+
+                                    <!-- Tip 3: Eyewear/Accessories -->
+                                    <div class="advice-subcard">
+                                        <div class="subcard-header">
+                                            <i class="fa-solid fa-glasses subcard-icon"></i>
+                                            <h5>似合うメガネ・アクセサリー</h5>
+                                        </div>
+                                        <p id="adviceAccessories">フェイスラインが整っているため、スクエアやウェリントン型のアイウェアが知的なコントラストを生みます。</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <!-- App Footer -->
+        <footer class="app-footer">
+            <p>&copy; 2026 AI FACIAL ANALYZER. Developed with Advanced Web Graphics.</p>
+        </footer>
+    </div>
+
+    <!-- Custom Script -->
+    <script src="app.js"></script>
+</body>
+</html>
