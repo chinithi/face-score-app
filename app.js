@@ -8,6 +8,7 @@ let appState = {
     scanProgress: 0,
     scanTimer: null,
     radarChartInstance: null,
+    facingMode: 'user', // 'user' (front) or 'environment' (back)
     
     // Landmark Coordinates (relative to viewport width/height)
     landmarks: {
@@ -55,6 +56,7 @@ const btnTriggerScan = document.getElementById('btnTriggerScan');
 const btnCancelScan = document.getElementById('btnCancelScan');
 const btnSaveCard = document.getElementById('btnSaveCard');
 const btnRestart = document.getElementById('btnRestart');
+const btnSwitchCamera = document.getElementById('btnSwitchCamera');
 
 // Results elements
 const scoreNumber = document.getElementById('scoreNumber');
@@ -100,6 +102,7 @@ function initEventListeners() {
     // Scanner actions
     btnTriggerScan.addEventListener('click', startScanningProcess);
     btnCancelScan.addEventListener('click', cancelScannerMode);
+    btnSwitchCamera.addEventListener('click', toggleCameraFacingMode);
     
     // Result actions
     btnRestart.addEventListener('click', resetToHome);
@@ -176,8 +179,9 @@ async function startWebcamMode() {
     appState.uploadedImage = null;
     switchSection('sectionScanner');
     
-    // Show face guide oval
+    // Show face guide oval and switch camera button
     faceGuideOval.style.display = 'flex';
+    btnSwitchCamera.style.display = 'flex';
     
     terminalLogs.innerHTML = '';
     addTerminalLog('Initializing system components...', 'muted');
@@ -188,18 +192,25 @@ async function startWebcamMode() {
     document.querySelector('.status-indicator-dot').style.boxShadow = 'var(--glow-cyan)';
     
     try {
+        // Toggle video mirroring classes dynamically
+        if (appState.facingMode === 'user') {
+            webcamVideo.classList.add('mirror');
+        } else {
+            webcamVideo.classList.remove('mirror');
+        }
+        
         appState.stream = await navigator.mediaDevices.getUserMedia({
             video: {
                 width: { ideal: 640 },
                 height: { ideal: 480 },
-                facingMode: 'user'
+                facingMode: appState.facingMode
             },
             audio: false
         });
         
         webcamVideo.srcObject = appState.stream;
         webcamVideo.style.display = 'block';
-        addTerminalLog('Webcam stream active (640x480).', 'success');
+        addTerminalLog(`Webcam stream active (${appState.facingMode === 'user' ? 'インカメラ' : 'アウトカメラ'}).`, 'success');
         addTerminalLog('Position your face inside the overlay guide.', 'cyan');
         
         btnTriggerScan.classList.remove('disabled');
@@ -262,6 +273,9 @@ function stopCameraStream() {
 function cancelScannerMode() {
     stopCameraStream();
     switchSection('sectionHome');
+    
+    // Hide controls
+    btnSwitchCamera.style.display = 'none';
     
     // Reset indicators
     systemStatus.textContent = 'SYSTEM: ACTIVE';
@@ -580,6 +594,7 @@ function finalizeScanResults() {
     // Clean states
     stopCameraStream();
     appState.isScanning = false;
+    btnSwitchCamera.style.display = 'none';
     laserBar.classList.remove('active', 'pink');
     faceGuideOval.classList.remove('scanning');
     btnTriggerScan.classList.remove('disabled');
@@ -918,4 +933,15 @@ function generateCertificateCard() {
     link.click();
     
     addTerminalLog('Report certificate card successfully exported and downloaded.', 'success');
+}
+
+// --- Toggle Camera Orientation ---
+function toggleCameraFacingMode() {
+    if (appState.isScanning) return; // Prevent switching mid-scan
+    
+    appState.facingMode = (appState.facingMode === 'user') ? 'environment' : 'user';
+    addTerminalLog(`カメラを切替中 (${appState.facingMode === 'user' ? 'インカメラ' : 'アウトカメラ'})...`, 'cyan');
+    
+    stopCameraStream();
+    startWebcamMode();
 }
