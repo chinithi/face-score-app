@@ -87,32 +87,44 @@
             <!-- SECTION 2: SCANNER -->
             <section id="sectionScanner" class="app-section">
                 <div class="scanner-grid">
-                    <!-- Left: Camera Viewport / Image Preview -->
-                    <div class="scanner-viewport-container">
-                        <div class="viewport-wrapper">
-                            <!-- Video elements for Camera -->
-                            <video id="webcamVideo" autoplay playsinline muted></video>
-                            
-                            <!-- Canvas overlay for detected landmarks & laser lines -->
-                            <canvas id="scannerCanvas"></canvas>
-                            
-                            <!-- Camera Switch Button -->
-                            <button id="btnSwitchCamera" class="viewport-control-btn" title="カメラ切り替え">
-                                <i class="fa-solid fa-camera-rotate"></i>
-                            </button>
-                            
-                            <!-- Static guidance overlay (face guide oval) -->
-                            <div class="face-guide-oval">
-                                <div class="guide-corner tl"></div>
-                                <div class="guide-corner tr"></div>
-                                <div class="guide-corner bl"></div>
-                                <div class="guide-corner br"></div>
-                                <span class="guide-text">枠内に顔を合わせてください</span>
+                    <!-- Left Column: Camera and its control buttons -->
+                    <div class="scanner-left-column">
+                        <div class="scanner-viewport-container">
+                            <div class="viewport-wrapper">
+                                <!-- Video elements for Camera -->
+                                <video id="webcamVideo" autoplay playsinline muted></video>
+                                
+                                <!-- Canvas overlay for detected landmarks & laser lines -->
+                                <canvas id="scannerCanvas"></canvas>
+                                
+                                <!-- Camera Switch Button -->
+                                <button id="btnSwitchCamera" class="viewport-control-btn" title="カメラ切り替え">
+                                    <i class="fa-solid fa-camera-rotate"></i>
+                                </button>
+                                
+                                <!-- Static guidance overlay (face guide oval) -->
+                                <div class="face-guide-oval">
+                                    <div class="guide-corner tl"></div>
+                                    <div class="guide-corner tr"></div>
+                                    <div class="guide-corner bl"></div>
+                                    <div class="guide-corner br"></div>
+                                    <span class="guide-text">枠内に顔を合わせてください</span>
+                                </div>
                             </div>
+                            
+                            <!-- Scanning state bar overlay (laser bar) -->
+                            <div class="laser-bar" id="laserBar"></div>
                         </div>
                         
-                        <!-- Scanning state bar overlay (laser bar) -->
-                        <div class="laser-bar" id="laserBar"></div>
+                        <!-- Buttons below camera -->
+                        <div class="scanner-buttons">
+                            <button id="btnTriggerScan" class="btn btn-primary btn-glow disabled">
+                                <i class="fa-solid fa-bolt"></i> スキャン開始
+                            </button>
+                            <button id="btnCancelScan" class="btn btn-secondary">
+                                <i class="fa-solid fa-arrow-left"></i> キャンセル
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Right: Control Panel & Live Logs -->
@@ -125,16 +137,6 @@
                         <!-- Terminal logs -->
                         <div class="terminal-logs" id="terminalLogs">
                             <div class="log-line text-muted">[INIT] Console loaded... Ready for input.</div>
-                        </div>
-
-                        <!-- Panel Buttons -->
-                        <div class="panel-buttons">
-                            <button id="btnTriggerScan" class="btn btn-primary btn-glow disabled">
-                                <i class="fa-solid fa-bolt"></i> スキャン開始
-                            </button>
-                            <button id="btnCancelScan" class="btn btn-secondary">
-                                <i class="fa-solid fa-arrow-left"></i> キャンセル
-                            </button>
                         </div>
                     </div>
                 </div>

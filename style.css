@@ -587,6 +587,23 @@ body {
     50% { opacity: 0.3; }
 }
 
+.scanner-left-column {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.scanner-buttons {
+    display: flex;
+    gap: 16px;
+    margin-top: 20px;
+    width: 100%;
+}
+
+.scanner-buttons .btn {
+    flex: 1;
+}
+
 .terminal-logs {
     background: rgba(0, 0, 0, 0.4);
     border: 1px solid rgba(255, 255, 255, 0.04);
@@ -595,10 +612,10 @@ body {
     font-family: 'Orbitron', monospace;
     font-size: 11px;
     line-height: 1.6;
-    height: 200px;
+    flex: 1; /* Stretch to fill container height */
+    min-height: 250px;
     overflow-y: auto;
     color: #4ae8a8;
-    margin-bottom: 24px;
 }
 
 .terminal-logs::-webkit-scrollbar {
@@ -621,13 +638,6 @@ body {
 .log-line.text-cyan { color: var(--accent-cyan); }
 .log-line.text-pink { color: var(--accent-pink); }
 .log-line.text-success { color: #00ff66; }
-
-.panel-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-top: auto;
-}
 
 /* BUTTONS */
 .btn {

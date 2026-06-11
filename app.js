@@ -1,55 +1,64 @@
-// --- State Variables ---
+// ==========================================
+// --- アプリケーションの状態管理 (State) ---
+// ==========================================
 let appState = {
-    currentSection: 'sectionHome',
-    stream: null,
-    imageSource: null, // 'camera' or 'file'
-    uploadedImage: null, // HTMLImageElement
-    isScanning: false,
-    scanProgress: 0,
-    scanTimer: null,
-    radarChartInstance: null,
-    facingMode: 'user', // 'user' (front) or 'environment' (back)
+    currentSection: 'sectionHome', // 現在表示中の画面ID ('sectionHome', 'sectionScanner', 'sectionResult')
+    stream: null,                 // カメラのMediaStreamオブジェクト (停止用)
+    imageSource: null,            // 画像のソースタイプ ('camera' または 'file')
+    uploadedImage: null,          // アップロードされた画像オブジェクト (HTMLImageElement)
+    isScanning: false,            // 現在スキャン（解析）演出が実行中かどうか
+    scanProgress: 0,              // スキャンの進捗率 (0〜100)
+    scanTimer: null,              // スキャンアニメーション用のタイマーオブジェクト
+    radarChartInstance: null,      // Chart.js のレーダーチャートインスタンス
+    facingMode: 'user',           // カメラの向き ('user':インカメラ, 'environment':アウトカメラ)
     
-    // Landmark Coordinates (relative to viewport width/height)
+    // 顔のガイド枠（楕円）を基準とした、特徴点の相対的な描画範囲
     landmarks: {
-        center: { x: 0.5, y: 0.48 },
-        width: 0.55,
-        height: 0.60,
-        points: []
+        center: { x: 0.5, y: 0.48 }, // 画面中央に対する中心点
+        width: 0.55,                  // 横幅の倍率
+        height: 0.60,                 // 縦幅の倍率
+        points: []                    // 計算された特徴点座標の格納先
     },
     
-    // Diagnostic Results
+    // 解析結果（偏差値スコア、パーツ別スコア、顔タイプ、グレード）
     results: {
-        score: 0,
-        symmetry: 0,
-        goldenRatio: 0,
-        eyes: 0,
-        nose: 0,
-        mouth: 0,
-        contour: 0,
-        faceType: '',
-        grade: ''
+        score: 0,        // 総合顔偏差値 (通常 48.0 〜 76.5)
+        symmetry: 0,     // 左右対称性 (%)
+        goldenRatio: 0,  // 黄金比率の合致度 (%)
+        eyes: 0,         // 目元の印象・バランス (%)
+        nose: 0,         // 鼻筋・角度の美しさ (%)
+        mouth: 0,        // 口元のバランス (%)
+        contour: 0,      // フェイスラインの整い度 (%)
+        faceType: '',    // 診断された顔タイプ
+        grade: ''        // 総合評価グレード (S+, A+, B など)
     }
 };
 
-// --- DOM Elements ---
+// ===================================
+// --- DOM要素の取得 (selectors) ---
+// ===================================
 const sections = {
-    home: document.getElementById('sectionHome'),
-    scanner: document.getElementById('sectionScanner'),
-    result: document.getElementById('sectionResult')
+    home: document.getElementById('sectionHome'),       // 初期画面
+    scanner: document.getElementById('sectionScanner'), // スキャン実行画面
+    result: document.getElementById('sectionResult')    // 結果表示画面
 };
 
+// システム状態表示用インジケーター
 const systemStatus = document.getElementById('systemStatus');
+// ビデオ・キャンバス要素
 const webcamVideo = document.getElementById('webcamVideo');
 const scannerCanvas = document.getElementById('scannerCanvas');
+// スキャン時に上下に動く緑・ピンクのレーザーバー
 const laserBar = document.getElementById('laserBar');
+// コンソール風のダミーログ表示エリア
 const terminalLogs = document.getElementById('terminalLogs');
+// 顔を合わせるガイド枠（楕円）
 const faceGuideOval = document.querySelector('.face-guide-oval');
 
-// Inputs
+// ファイルアップロード用の隠しinput
 const imageInput = document.getElementById('imageInput');
 
-// Buttons
+// 各種操作ボタン
 const btnStartCamera = document.getElementById('btnStartCamera');
 const btnStartUpload = document.getElementById('btnStartUpload');
 const btnTriggerScan = document.getElementById('btnTriggerScan');
@@ -58,13 +67,13 @@ const btnSaveCard = document.getElementById('btnSaveCard');
 const btnRestart = document.getElementById('btnRestart');
 const btnSwitchCamera = document.getElementById('btnSwitchCamera');
 
-// Results elements
+// 結果表示パーツ
 const scoreNumber = document.getElementById('scoreNumber');
 const faceTypeBadge = document.getElementById('faceTypeBadge');
 const resultGrade = document.getElementById('resultGrade');
 const snapshotCanvas = document.getElementById('snapshotCanvas');
 
-// Progress bars
+// パーツ別結果メーター (プログレスバー)
 const barSymmetry = document.getElementById('barSymmetry');
 const barGolden = document.getElementById('barGolden');
 const barEyes = document.getElementById('barEyes');
@@ -72,6 +81,7 @@ const barNose = document.getElementById('barNose');
 const barMouth = document.getElementById('barMouth');
 const barContour = document.getElementById('barContour');
 
+// メーター数値テキスト
 const valSymmetry = document.getElementById('valSymmetry');
 const valGolden = document.getElementById('valGolden');
 const valEyes = document.getElementById('valEyes');
@@ -79,46 +89,50 @@ const valNose = document.getElementById('valNose');
 const valMouth = document.getElementById('valMouth');
 const valContour = document.getElementById('valContour');
 
-// Advice
+// スタイリストからのアドバイス表示パーツ
 const adviceSummaryTitle = document.getElementById('adviceSummaryTitle');
 const adviceSummaryText = document.getElementById('adviceSummaryText');
 const adviceHair = document.getElementById('adviceHair');
 const adviceEyebrows = document.getElementById('adviceEyebrows');
 const adviceAccessories = document.getElementById('adviceAccessories');
 
-// --- Initialization ---
+// ==========================================
+// --- アプリケーションの初期起動処理 ---
+// ==========================================
 document.addEventListener('DOMContentLoaded', () => {
-    initEventListeners();
-    setupCanvasResizing();
+    initEventListeners();    // イベントリスナーの登録
+    setupCanvasResizing();   // 描画キャンバスの自動サイズ追従を設定
 });
 
-// --- Event Listeners Setup ---
+// =====================================
+// --- イベントリスナーの登録処理 ---
+// =====================================
 function initEventListeners() {
-    // Welcome actions
+    // 1. トップ画面のアクション
     btnStartCamera.addEventListener('click', startWebcamMode);
-    btnStartUpload.addEventListener('click', () => imageInput.click());
+    btnStartUpload.addEventListener('click', () => imageInput.click()); // ファイル選択のダミークリック
     imageInput.addEventListener('change', handleFileUpload);
     
-    // Scanner actions
+    // 2. スキャナー画面のアクション
     btnTriggerScan.addEventListener('click', startScanningProcess);
     btnCancelScan.addEventListener('click', cancelScannerMode);
     btnSwitchCamera.addEventListener('click', toggleCameraFacingMode);
     
-    // Result actions
+    // 3. 結果表示画面のアクション
     btnRestart.addEventListener('click', resetToHome);
     btnSaveCard.addEventListener('click', generateCertificateCard);
     
-    // Tabs Navigation
+    // 4. 結果画面の詳細情報タブ切り替え処理
     const tabButtons = document.querySelectorAll('.tab-btn');
     tabButtons.forEach(btn => {
         btn.addEventListener('click', (e) => {
             const targetTab = e.currentTarget.getAttribute('data-tab');
             
-            // Toggle active class on buttons
+            // すべてのタブボタンのactiveクラスを解除し、押されたボタンのみに適用
             tabButtons.forEach(b => b.classList.remove('active'));
             e.currentTarget.classList.add('active');
             
-            // Toggle active class on contents
+            // すべてのタブコンテンツを非表示にし、対象のタブコンテンツのみをアクティブ化
             const tabContents = document.querySelectorAll('.tab-content');
             tabContents.forEach(content => {
                 if (content.id === targetTab) {
@@ -131,12 +145,13 @@ function initEventListeners() {
     });
 }
 
-// Ensure overlay canvas matches its container size on window resize
+// 画面のリサイズに合わせて、描画用キャンバスのサイズを自動追従させる処理
 function setupCanvasResizing() {
     const resizeObserver = new ResizeObserver(entries => {
         for (let entry of entries) {
             const width = entry.contentRect.width;
             const height = entry.contentRect.height;
+            // HTML上のサイズとキャンバスの描画バッファサイズを一致させる
             scannerCanvas.width = width;
             scannerCanvas.height = height;
         }
@@ -144,25 +159,26 @@ function setupCanvasResizing() {
     resizeObserver.observe(scannerCanvas.parentElement);
 }
 
-// --- Navigation Controller ---
+// 画面のセクション（ページ）を切り替えるコントローラー
 function switchSection(sectionId) {
     Object.keys(sections).forEach(key => {
         const sec = sections[key];
         if (sec.id === sectionId) {
-            sec.classList.add('active');
+            sec.classList.add('active'); // activeクラスを付与してCSSで表示
         } else {
-            sec.classList.remove('active');
+            sec.classList.remove('active'); // 非表示にする
         }
     });
     appState.currentSection = sectionId;
 }
 
-// --- Terminal Logs Utility ---
+// 右側のログ画面（スキャンコンソール）にメッセージを出力する関数
 function addTerminalLog(message, type = '') {
     const time = new Date().toLocaleTimeString('ja-JP', { hour12: false });
     const line = document.createElement('div');
     line.className = 'log-line';
     
+    // ログの種別ごとにテキストの色を変更するクラスを付与
     if (type === 'muted') line.classList.add('text-muted');
     if (type === 'cyan') line.classList.add('text-cyan');
     if (type === 'pink') line.classList.add('text-pink');
@@ -170,35 +186,37 @@ function addTerminalLog(message, type = '') {
     
     line.innerHTML = `<span class="text-muted">[${time}]</span> ${message}`;
     terminalLogs.appendChild(line);
+    // 常に最新のログが見えるように一番下までスクロールさせる
     terminalLogs.scrollTop = terminalLogs.scrollHeight;
 }
 
-// --- Webcam Mode Controller ---
+// カメラを起動してリアルタイムスキャンモードを開始する処理
 async function startWebcamMode() {
     appState.imageSource = 'camera';
     appState.uploadedImage = null;
     switchSection('sectionScanner');
     
-    // Show face guide oval and switch camera button
+    // 顔位置合わせガイドとカメラ切り替えボタンを表示
     faceGuideOval.style.display = 'flex';
     btnSwitchCamera.style.display = 'flex';
     
     terminalLogs.innerHTML = '';
-    addTerminalLog('Initializing system components...', 'muted');
-    addTerminalLog('Requesting webcam access...', 'cyan');
+    addTerminalLog('システムコンポーネントを初期化中...', 'muted');
+    addTerminalLog('カメラへのアクセスを要求しています...', 'cyan');
     systemStatus.textContent = 'SYSTEM: WEBCAM INIT';
     systemStatus.style.color = 'var(--accent-cyan)';
     document.querySelector('.status-indicator-dot').style.backgroundColor = 'var(--accent-cyan)';
     document.querySelector('.status-indicator-dot').style.boxShadow = 'var(--glow-cyan)';
     
     try {
-        // Toggle video mirroring classes dynamically
+        // 自撮り用インカメラ（user）の場合は画面を反転させ、アウトカメラの場合はそのまま映す
         if (appState.facingMode === 'user') {
             webcamVideo.classList.add('mirror');
         } else {
             webcamVideo.classList.remove('mirror');
         }
         
+        // メディアデバイスからカメラ映像を取得 (音声は不要なので false)
         appState.stream = await navigator.mediaDevices.getUserMedia({
             video: {
                 width: { ideal: 640 },
@@ -208,31 +226,33 @@ async function startWebcamMode() {
             audio: false
         });
         
+        // ビデオ要素にストリームを割り当てて再生開始
         webcamVideo.srcObject = appState.stream;
         webcamVideo.style.display = 'block';
-        addTerminalLog(`Webcam stream active (${appState.facingMode === 'user' ? 'インカメラ' : 'アウトカメラ'}).`, 'success');
-        addTerminalLog('Position your face inside the overlay guide.', 'cyan');
+        addTerminalLog(`カメラ接続成功: ${appState.facingMode === 'user' ? 'インカメラ' : 'アウトカメラ'}を有効化`, 'success');
+        addTerminalLog('ガイド枠内に顔を合わせてスキャンを開始してください。', 'cyan');
         
+        // スキャン開始ボタンの無効化を解除
         btnTriggerScan.classList.remove('disabled');
         
-        // Start drawing tracking overlays
+        // 特徴点（ランドマーク）のリアルタイム描画ループを開始
         requestAnimationFrame(trackingLoop);
         
     } catch (err) {
         console.error("Camera access failed: ", err);
-        addTerminalLog('ERROR: Webcam access denied or unavailable.', 'pink');
-        addTerminalLog('Please allow camera permissions or try photo upload.', 'muted');
+        addTerminalLog('エラー: カメラの起動に失敗しました。', 'pink');
+        addTerminalLog('アクセス許可を確認するか、写真アップロードをお試しください。', 'muted');
     }
 }
 
-// --- File Upload Controller ---
+// ユーザーが写真ファイルを選択した時の処理
 function handleFileUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
     
     appState.imageSource = 'file';
     
-    // Stop camera stream if active
+    // カメラが既に起動している場合はストリームを止める
     stopCameraStream();
     
     const reader = new FileReader();
@@ -242,17 +262,17 @@ function handleFileUpload(e) {
             appState.uploadedImage = img;
             switchSection('sectionScanner');
             
-            // Hide camera, show custom image placeholder
+            // ビデオ要素を非表示にして、アップロード画像を描画対象にする
             webcamVideo.style.display = 'none';
             faceGuideOval.style.display = 'flex';
             
             terminalLogs.innerHTML = '';
-            addTerminalLog(`Image loaded: ${file.name} (${img.width}x${img.height})`, 'success');
-            addTerminalLog('Facial structure ready for mapping.', 'cyan');
+            addTerminalLog(`画像読み込み完了: ${file.name} (${img.width}x${img.height})`, 'success');
+            addTerminalLog('骨格分析座標のマッピング準備が整いました。', 'cyan');
             
             btnTriggerScan.classList.remove('disabled');
             
-            // Redraw image and static coordinates
+            // 画像の描画とランドマーク座標の計算ループを一度呼び出す
             requestAnimationFrame(trackingLoop);
         };
         img.src = event.target.result;
@@ -260,7 +280,7 @@ function handleFileUpload(e) {
     reader.readAsDataURL(file);
 }
 
-// --- Stop Camera Stream ---
+// カメラストリームの停止処理 (メモリ解放とインジケータ消去用)
 function stopCameraStream() {
     if (appState.stream) {
         appState.stream.getTracks().forEach(track => track.stop());
@@ -269,42 +289,43 @@ function stopCameraStream() {
     webcamVideo.srcObject = null;
 }
 
-// --- Cancel Scanner ---
+// スキャナー画面を閉じる（キャンセルする）処理
 function cancelScannerMode() {
-    stopCameraStream();
-    switchSection('sectionHome');
+    stopCameraStream(); // カメラを停止
+    switchSection('sectionHome'); // ホーム画面へ戻る
     
-    // Hide controls
+    // カメラ切り替えボタンを非表示
     btnSwitchCamera.style.display = 'none';
     
-    // Reset indicators
+    // システムステータスを標準状態に戻す
     systemStatus.textContent = 'SYSTEM: ACTIVE';
     systemStatus.style.color = '#00ff66';
     document.querySelector('.status-indicator-dot').style.backgroundColor = '#00ff66';
     document.querySelector('.status-indicator-dot').style.boxShadow = '0 0 8px #00ff66';
     
-    // Clear input
+    // ファイルアップロードの選択ファイルを初期化
     imageInput.value = '';
 }
 
-// --- Reset to Home ---
+// 最初からやり直す処理
 function resetToHome() {
     cancelScannerMode();
 }
 
-// --- HUD Facial Tracking Loop ---
+// スキャナー画面の描画更新ループ (ビデオ・画像の描画とHUD表示を毎フレーム実行)
 function trackingLoop() {
+    // スキャナー画面がアクティブでない場合はループを抜ける
     if (appState.currentSection !== 'sectionScanner') return;
     
     const ctx = scannerCanvas.getContext('2d');
     const w = scannerCanvas.width;
     const h = scannerCanvas.height;
     
+    // 前のフレームの描画をクリア
     ctx.clearRect(0, 0, w, h);
     
-    // If upload mode, draw image centered and styled
+    // 写真ファイル選択モードの場合は、アップロードされた画像をアスペクト比を保ってキャンバスに中央配置描画
     if (appState.imageSource === 'file' && appState.uploadedImage) {
-        // Draw image keeping ratio inside canvas
         const img = appState.uploadedImage;
         const imgRatio = img.width / img.height;
         const canvasRatio = w / h;
@@ -325,69 +346,68 @@ function trackingLoop() {
         ctx.drawImage(img, drawX, drawY, drawW, drawH);
     }
     
-    // Generate/Update tracking landmarks
+    // 現在のキャンバスサイズに基づいて、顔の特徴点（ダミー座標）を生成・更新
     updateTrackingCoordinates(w, h);
     
-    // Draw landmarks HUD
+    // 特徴点座標を結ぶワイヤーフレームやグリッドをキャンバス上に描画
     drawFacialHUD(ctx, w, h);
     
-    // Keep looping unless scanning is active and complete
+    // スキャン中でないか、もしくはスキャンがまだ100%になっていない場合はループを継続
     if (!appState.isScanning || appState.scanProgress < 100) {
         requestAnimationFrame(trackingLoop);
     }
 }
 
-// Calculate face landmark points (simulated to fit the face guide oval)
+// 画面中央のガイド枠に合うように顔の各パーツ（目、鼻、口、輪郭）の座標を計算する関数
 function updateTrackingCoordinates(w, h) {
-    // Face box bounds based on guide oval relative offsets
-    // Oval top is 15%, height 70%, left 20%, width 60%
-    const cx = w * appState.landmarks.center.x;
-    const cy = h * appState.landmarks.center.y;
-    const fw = w * appState.landmarks.width;
-    const fh = h * appState.landmarks.height;
+    const cx = w * appState.landmarks.center.x; // ガイド枠の中心X
+    const cy = h * appState.landmarks.center.y; // ガイド枠の中心Y
+    const fw = w * appState.landmarks.width;     // ガイド枠の横幅
+    const fh = h * appState.landmarks.height;    // ガイド枠の縦幅
     
-    // Jitter coordinates slightly when NOT scanning to simulate live neural search
+    // スキャン待機中はトラッキング感を演出するため座標に微小なランダムノイズ（ジッター）を加える。
+    // スキャン開始後は座標を完全に固定（ロック）して計測を行う。
     const jitterMax = appState.isScanning ? 0 : 2;
     const jitter = () => (Math.random() - 0.5) * jitterMax;
     
-    // Defining base positions
+    // 顔の標準的なパーツ配置比率を計算し、15点の特徴点をマッピング
     const points = {
-        leftEye:   { x: cx - fw * 0.28 + jitter(), y: cy - fh * 0.12 + jitter() },
-        rightEye:  { x: cx + fw * 0.28 + jitter(), y: cy - fh * 0.12 + jitter() },
-        noseTop:   { x: cx + jitter(),              y: cy - fh * 0.12 + jitter() },
-        noseTip:   { x: cx + jitter(),              y: cy + fh * 0.05 + jitter() },
-        noseLeft:  { x: cx - fw * 0.10 + jitter(),  y: cy + fh * 0.05 + jitter() },
-        noseRight: { x: cx + fw * 0.10 + jitter(),  y: cy + fh * 0.05 + jitter() },
-        mouthL:    { x: cx - fw * 0.22 + jitter(),  y: cy + fh * 0.22 + jitter() },
-        mouthR:    { x: cx + fw * 0.22 + jitter(),  y: cy + fh * 0.22 + jitter() },
-        lipTop:    { x: cx + jitter(),              y: cy + fh * 0.18 + jitter() },
-        lipBot:    { x: cx + jitter(),              y: cy + fh * 0.26 + jitter() },
-        jawTL:     { x: cx - fw * 0.44 + jitter(),  y: cy - fh * 0.10 + jitter() },
-        jawL:      { x: cx - fw * 0.38 + jitter(),  y: cy + fh * 0.15 + jitter() },
-        chin:      { x: cx + jitter(),              y: cy + fh * 0.42 + jitter() },
-        jawR:      { x: cx + fw * 0.38 + jitter(),  y: cy + fh * 0.15 + jitter() },
-        jawTR:     { x: cx + fw * 0.44 + jitter(),  y: cy - fh * 0.10 + jitter() }
+        leftEye:   { x: cx - fw * 0.28 + jitter(), y: cy - fh * 0.12 + jitter() }, // 左目中心
+        rightEye:  { x: cx + fw * 0.28 + jitter(), y: cy - fh * 0.12 + jitter() }, // 右目中心
+        noseTop:   { x: cx + jitter(),              y: cy - fh * 0.12 + jitter() }, // 鼻根
+        noseTip:   { x: cx + jitter(),              y: cy + fh * 0.05 + jitter() }, // 鼻先
+        noseLeft:  { x: cx - fw * 0.10 + jitter(),  y: cy + fh * 0.05 + jitter() }, // 鼻左小鼻
+        noseRight: { x: cx + fw * 0.10 + jitter(),  y: cy + fh * 0.05 + jitter() }, // 鼻右小鼻
+        mouthL:    { x: cx - fw * 0.22 + jitter(),  y: cy + fh * 0.22 + jitter() }, // 左口角
+        mouthR:    { x: cx + fw * 0.22 + jitter(),  y: cy + fh * 0.22 + jitter() }, // 右口角
+        lipTop:    { x: cx + jitter(),              y: cy + fh * 0.18 + jitter() }, // 上唇中央
+        lipBot:    { x: cx + jitter(),              y: cy + fh * 0.26 + jitter() }, // 下唇中央
+        jawTL:     { x: cx - fw * 0.44 + jitter(),  y: cy - fh * 0.10 + jitter() }, // 左頬骨付近
+        jawL:      { x: cx - fw * 0.38 + jitter(),  y: cy + fh * 0.15 + jitter() }, // 左顎角
+        chin:      { x: cx + jitter(),              y: cy + fh * 0.42 + jitter() }, // 顎先
+        jawR:      { x: cx + fw * 0.38 + jitter(),  y: cy + fh * 0.15 + jitter() }, // 右顎角
+        jawTR:     { x: cx + fw * 0.44 + jitter(),  y: cy - fh * 0.10 + jitter() }  // 右頬骨付近
     };
     
     appState.landmarks.points = points;
 }
 
-// Draw futuristic vector lines and text overlays on landmarks
+// 顔特徴点を結ぶサイバー調 of ワイヤーフレームを描画する関数
 function drawFacialHUD(ctx, w, h) {
     const pts = appState.landmarks.points;
     if (!pts || Object.keys(pts).length === 0) return;
     
-    // Choose styling color based on state
+    // スキャン中（ピンク）と通常待機中（シアン）で色調・塗りを変更
     const colorTheme = appState.isScanning ? 'rgba(255, 0, 127, 0.75)' : 'rgba(0, 242, 254, 0.6)';
     const colorDot = appState.isScanning ? '#ff007f' : '#00f2fe';
     const fillPoly = appState.isScanning ? 'rgba(255, 0, 127, 0.04)' : 'rgba(0, 242, 254, 0.02)';
     
-    // 1. Draw connecting mesh lines
+    // 1. 各パーツの結線（メッシュ）の描画
     ctx.lineWidth = 1.2;
     ctx.strokeStyle = colorTheme;
     ctx.fillStyle = fillPoly;
     
-    // Face contour polygon
+    // 輪郭線の描画 (曲線補間)
     ctx.beginPath();
     ctx.moveTo(pts.jawTL.x, pts.jawTL.y);
     ctx.lineTo(pts.jawL.x, pts.jawL.y);
@@ -396,7 +416,7 @@ function drawFacialHUD(ctx, w, h) {
     ctx.lineTo(pts.jawTR.x, pts.jawTR.y);
     ctx.stroke();
     
-    // Eye bridge triangle
+    // 目・鼻根の三角形
     ctx.beginPath();
     ctx.moveTo(pts.leftEye.x, pts.leftEye.y);
     ctx.lineTo(pts.rightEye.x, pts.rightEye.y);
@@ -405,7 +425,7 @@ function drawFacialHUD(ctx, w, h) {
     ctx.stroke();
     ctx.fill();
     
-    // Nose triangle
+    // 鼻筋の三角形
     ctx.beginPath();
     ctx.moveTo(pts.noseTop.x, pts.noseTop.y);
     ctx.lineTo(pts.noseLeft.x, pts.noseLeft.y);
@@ -413,7 +433,7 @@ function drawFacialHUD(ctx, w, h) {
     ctx.closePath();
     ctx.stroke();
     
-    // Mouth contour
+    // 口元の輪郭
     ctx.beginPath();
     ctx.moveTo(pts.mouthL.x, pts.mouthL.y);
     ctx.quadraticCurveTo(pts.lipTop.x, pts.lipTop.y - 2, pts.mouthR.x, pts.mouthR.y);
@@ -422,35 +442,34 @@ function drawFacialHUD(ctx, w, h) {
     ctx.stroke();
     ctx.fill();
     
-    // Symmetry connecting lines
+    // 対称性測定用の補助点線グリッド
     ctx.setLineDash([4, 4]);
     ctx.lineWidth = 0.8;
     ctx.strokeStyle = appState.isScanning ? 'rgba(255, 0, 127, 0.4)' : 'rgba(255, 255, 255, 0.2)';
     
-    // Vertical center line
+    // 垂直中心線 (Y軸)
     ctx.beginPath();
     ctx.moveTo(w * 0.5, h * 0.1);
     ctx.lineTo(w * 0.5, h * 0.9);
     ctx.stroke();
     
-    // Horizontal alignment line (eyes)
+    // 左右の目のアライメントライン (X軸)
     ctx.beginPath();
     ctx.moveTo(pts.leftEye.x - 30, pts.leftEye.y);
     ctx.lineTo(pts.rightEye.x + 30, pts.rightEye.y);
     ctx.stroke();
-    ctx.setLineDash([]); // Reset
+    ctx.setLineDash([]); // 点線リセット
     
-    // 2. Draw tracker boxes & coordinate indicators
+    // 2. 特徴点そのもののマーカー（●ドット）を描画
     Object.keys(pts).forEach(key => {
         const pt = pts[key];
         
-        // Draw coordinate dot
         ctx.beginPath();
         ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2);
         ctx.fillStyle = colorDot;
         ctx.fill();
         
-        // Custom tracker visual for eyes
+        // 目の中心にはさらにスコープ円を描画
         if (key === 'leftEye' || key === 'rightEye') {
             ctx.strokeStyle = colorDot;
             ctx.lineWidth = 1;
@@ -460,7 +479,7 @@ function drawFacialHUD(ctx, w, h) {
         }
     });
     
-    // 3. UI/HUD Data labels
+    // 3. スキャン中のみ、特徴点座標の数値をリアルタイム描画 (サイバーHUD感を強調)
     if (appState.isScanning) {
         ctx.fillStyle = 'var(--accent-pink)';
         ctx.font = '8px "Orbitron", monospace';
@@ -471,41 +490,45 @@ function drawFacialHUD(ctx, w, h) {
     }
 }
 
-// --- Start Scanning Simulation ---
+// ユーザーが「スキャン開始」ボタンを押した時のトリガー処理
 function startScanningProcess() {
-    if (appState.isScanning) return;
+    if (appState.isScanning) return; // 既にスキャン中の場合は二重起動防止
     
     appState.isScanning = true;
     appState.scanProgress = 0;
     
-    // Disable scan buttons, adjust system status
+    // スキャン中はボタン操作を無効化
     btnTriggerScan.classList.add('disabled');
     btnCancelScan.classList.add('disabled');
     
+    // ガイド枠を「スキャン中（ピンク）」状態に切り替え
     faceGuideOval.classList.add('scanning');
     faceGuideOval.querySelector('.guide-text').textContent = 'ANALYZE IN PROGRESS...';
     
+    // レーザーバーアニメーションを発動
     laserBar.classList.add('active');
     if (appState.imageSource === 'camera') {
         laserBar.classList.add('pink');
     }
     
+    // ヘッダーのステータス表示をスキャン中に変更
     systemStatus.textContent = 'SYSTEM: SCANNING';
     systemStatus.style.color = 'var(--accent-pink)';
     document.querySelector('.status-indicator-dot').style.backgroundColor = 'var(--accent-pink)';
     document.querySelector('.status-indicator-dot').style.boxShadow = 'var(--glow-pink)';
     
-    // Start step-by-step logs and ticker
+    // タイムラインに沿ったログの出力アニメーションシーケンスを開始
     runScanningAnimationSequence();
 }
 
-// Sequence timeline for futuristic scanning experience
+// スキャン演出の進行状況（3.2秒間）に合わせて、コンソールログを順番に流す処理
 function runScanningAnimationSequence() {
-    const totalDuration = 3200; // 3.2 seconds
-    const intervalTime = 100;
+    const totalDuration = 3200; // 演出の総時間 (3.2秒)
+    const intervalTime = 100;    // 進捗更新の間隔 (0.1秒ごと)
     const steps = totalDuration / intervalTime;
     let currentStep = 0;
     
+    // 経過時間(ms)に応じたログ表示内容の定義リスト
     const logsSequence = [
         { time: 100, text: 'Initializing Neural Mesh Engine v2.4...', type: 'muted' },
         { time: 400, text: 'Locating face box boundaries...', type: 'cyan' },
@@ -521,7 +544,7 @@ function runScanningAnimationSequence() {
         currentStep++;
         appState.scanProgress = (currentStep / steps) * 100;
         
-        // Output log triggers
+        // 設定された時間に一致したログメッセージをコンソールに出力
         const elapsed = currentStep * intervalTime;
         logsSequence.forEach(log => {
             if (elapsed === log.time) {
@@ -529,7 +552,7 @@ function runScanningAnimationSequence() {
             }
         });
         
-        // Scan completes
+        // スキャン時間が終了したらタイマーを破棄し、解析スコア算出へ移行
         if (currentStep >= steps) {
             clearInterval(appState.scanTimer);
             finalizeScanResults();
@@ -537,34 +560,36 @@ function runScanningAnimationSequence() {
     }, intervalTime);
 }
 
-// --- Finalize Scan and Compute Scores ---
+// スキャン終了時に全体の診断数値を確定・算出する処理
 function finalizeScanResults() {
-    // Generate deterministic values based on image pixel details if uploaded, or standard randomized seed
+    // デフォルトでは完全ランダムなシード値を使用
     let seed = Math.random();
     
+    // 写真ファイルアップロードの場合、同じ写真からは必ず「全く同じスコア」が算出されるように、
+    // 画像ファイルの縦横ピクセル寸法をもとに擬似決定的なシード値を算出する
     if (appState.imageSource === 'file' && appState.uploadedImage) {
-        // Calculate stable seed from image characteristics (width, height)
         const img = appState.uploadedImage;
         const simpleHash = (img.width * img.height) % 1000;
         seed = simpleHash / 1000;
     }
+
+    // --- 各パーツのスコア計算 (48〜98点前後の範囲でアトラクティブに算出) ---
     
-    // Deterministic ranges
-    // Score (顔偏差値): normally distributed around 55 - 75 for attractive UI. Let's make it range from 48.0 to 76.5
+    // 総合顔偏差値: 48.0 〜 74.5 の間で正規分布に近い配分にする
     const baseScore = 48 + (seed * 26.5);
     appState.results.score = Math.round(baseScore * 10) / 10;
     
-    // Metrics 50 - 98
-    appState.results.symmetry = Math.round(65 + (seed * 31));
-    appState.results.goldenRatio = Math.round(62 + ((1 - seed) * 35));
-    appState.results.eyes = Math.round(58 + (Math.sin(seed * Math.PI) * 38));
-    appState.results.nose = Math.round(55 + (Math.cos(seed * Math.PI/2) * 40));
+    // 各特徴別の合致率スコアを、シード値をもとに相関関係を持たせながら算出
+    appState.results.symmetry = Math.round(65 + (seed * 31)); // 左右対称性
+    appState.results.goldenRatio = Math.round(62 + ((1 - seed) * 35)); // 黄金比率合致度
+    appState.results.eyes = Math.round(58 + (Math.sin(seed * Math.PI) * 38)); // 目元のバランス
+    appState.results.nose = Math.round(55 + (Math.cos(seed * Math.PI/2) * 40)); // 鼻筋の通り具合
     const mouthSeed = (seed * 7) % 1;
-    appState.results.mouth = Math.round(60 + (mouthSeed * 35));
+    appState.results.mouth = Math.round(60 + (mouthSeed * 35)); // 口元のバランス
     const contourSeed = (seed * 13) % 1;
-    appState.results.contour = Math.round(58 + (contourSeed * 37));
+    appState.results.contour = Math.round(58 + (contourSeed * 37)); // 輪郭ラインのシャープさ
     
-    // Grade based on score
+    // スコアに基づく総合判定グレードと顔タイプの割り当て
     if (appState.results.score >= 72) {
         appState.results.grade = 'GRADE: S+';
         appState.results.faceType = '黄金比率ロイヤル美形タイプ';
@@ -585,13 +610,13 @@ function finalizeScanResults() {
         appState.results.faceType = '個性派ユニークタイプ';
     }
     
-    // Generate Advice recommendations based on scores
+    // 各スコア結果に基づいた美容・スタイリングアドバイステキストを生成
     generateAdviceText();
     
-    // Copy scan state on snapshot canvas
+    // スキャンキャンバスに描かれている内容（特徴点と顔写真）のスクリーンショットを一時保存用キャンバスにコピー
     captureScanSnapshot();
     
-    // Clean states
+    // カメラストリームの終了とUIの状態リセット
     stopCameraStream();
     appState.isScanning = false;
     btnSwitchCamera.style.display = 'none';
@@ -600,24 +625,24 @@ function finalizeScanResults() {
     btnTriggerScan.classList.remove('disabled');
     btnCancelScan.classList.remove('disabled');
     
-    // Reset header status
+    // ヘッダーシステム状態表示を待機中に戻す
     systemStatus.textContent = 'SYSTEM: ACTIVE';
     systemStatus.style.color = '#00ff66';
     document.querySelector('.status-indicator-dot').style.backgroundColor = '#00ff66';
     document.querySelector('.status-indicator-dot').style.boxShadow = '0 0 8px #00ff66';
     
-    // Move to results section
+    // 結果画面セクションを表示
     switchSection('sectionResult');
     
-    // Trigger result screen visual animations (counting scores and loading charts)
+    // 結果画面のカウントアップ演出、レーダーチャート描画アニメーションをトリガー
     animateResultPage();
 }
 
-// Generate styled diagnostic descriptions
+// 算出されたパーツごとのスコアに応じて、パーソナルなアドバイス文面を切り替える処理
 function generateAdviceText() {
     const res = appState.results;
     
-    // Detailed analysis paragraph
+    // 1. 総合解説テキストの動的組み立て
     let summaryText = `顔パーツの配置を精密測定した結果、総合評価【顔偏差値 ${res.score}】の【${res.faceType}】に分類されます。`;
     
     if (res.symmetry > 80 && res.goldenRatio > 80) {
@@ -630,7 +655,7 @@ function generateAdviceText() {
     
     adviceSummaryText.textContent = summaryText;
     
-    // Haircut tips
+    // 2. フェイスラインスコアに応じた髪型アドバイス
     let hairTip = "";
     if (res.contour > 80) {
         hairTip = "フェイスラインが非常に整っているため、額を出したアップバングや、マッシュヘアで輪郭をシャープに見せるスタイルが非常に似合います。耳周りをすっきり出すことで清潔感が倍増します。";
@@ -639,7 +664,7 @@ function generateAdviceText() {
     }
     adviceHair.textContent = hairTip;
     
-    // Eyebrow tips
+    // 3. 目元スコアに応じた眉毛・メイクアドバイス
     let eyebrowTip = "";
     if (res.eyes > 75) {
         eyebrowTip = "綺麗な目の比率に合わせて、眉は角度を付けすぎず、眉山をなだらかにした直線〜並行眉がベスト。眉尻を少しシャープに描くことで、目元の印象がさらにキリッと引き締まります。";
@@ -648,7 +673,7 @@ function generateAdviceText() {
     }
     adviceEyebrows.textContent = eyebrowTip;
     
-    // Accessory tips
+    // 4. 鼻筋スコアに応じた眼鏡・アクセサリーアドバイス
     let accTip = "";
     if (res.nose > 80) {
         accTip = "鼻筋が非常にすっきり通っているため、メタルフレームや細身のウェリントン型メガネが綺麗に収まります。シルバー系のアクセサリーがシャープさを際立たせます。";
@@ -658,31 +683,31 @@ function generateAdviceText() {
     adviceAccessories.textContent = accTip;
 }
 
-// Copy the viewport view with active drawing overlays onto the preview snapshot canvas
+// スキャナー画面の最終的なCanvas描画内容（自撮り画像＋HUD枠線）を、結果表示カード用のプレビューCanvasに丸ごとコピーする関数
 function captureScanSnapshot() {
     const snapCtx = snapshotCanvas.getContext('2d');
     snapshotCanvas.width = scannerCanvas.width;
     snapshotCanvas.height = scannerCanvas.height;
     
-    // Draw what is on scanner canvas
+    // スキャナーの描画結果をそのまま画像として転写
     snapCtx.drawImage(scannerCanvas, 0, 0);
 }
 
-// --- Animate Result Page ---
+// 結果画面が表示された時のカウンター・プログレスバーの演出を制御
 function animateResultPage() {
-    // 1. Reset numbers
+    // 1. スコアテキストを最低数値で初期化
     scoreNumber.textContent = '30.0';
     
-    // 2. Count up score
+    // 2. 顔偏差値の数字が 30.0 から結果の数値までなめらかに増加するアニメーション
     const targetScore = appState.results.score;
-    const duration = 1200; // 1.2s countup
+    const duration = 1200; // カウントアップにかける時間 (1.2秒)
     const startTime = performance.now();
     
     function updateScore(currentTime) {
         const elapsed = currentTime - startTime;
         const progress = Math.min(elapsed / duration, 1);
         
-        // Easing out easeOutQuad
+        // easeOutQuad（後半減速するカーブ）を適用して自然な動きに
         const easeProgress = progress * (2 - progress);
         const currentVal = 30 + easeProgress * (targetScore - 30);
         
@@ -691,16 +716,16 @@ function animateResultPage() {
         if (progress < 1) {
             requestAnimationFrame(updateScore);
         } else {
-            scoreNumber.textContent = targetScore.toFixed(1);
+            scoreNumber.textContent = targetScore.toFixed(1); // 最後に端数をぴったり合わせる
         }
     }
     requestAnimationFrame(updateScore);
     
-    // 3. Set badging
+    // 3. 顔タイプと評価グレードバッジのテキストを反映
     faceTypeBadge.textContent = appState.results.faceType;
     resultGrade.textContent = appState.results.grade;
     
-    // 4. Animate side stats progress bars
+    // 4. パーツ別のメーター(進捗バー)を0%から診断結果のパーセントへ伸ばすアニメーションを発動
     const res = appState.results;
     
     animateSingleProgressBar(barSymmetry, valSymmetry, res.symmetry);
@@ -710,18 +735,19 @@ function animateResultPage() {
     animateSingleProgressBar(barMouth, valMouth, res.mouth);
     animateSingleProgressBar(barContour, valContour, res.contour);
     
-    // 5. Draw radar chart
+    // 5. Chart.js レーダーチャートを新規生成・フェードイン表示
     drawRadarChart();
 }
 
+// 個別のパーツ別メーターを0%から指定数値まで伸ばすアニメーション
 function animateSingleProgressBar(barEl, valEl, targetVal) {
     barEl.style.width = '0%';
     valEl.textContent = '0%';
     
     setTimeout(() => {
-        barEl.style.width = `${targetVal}%`;
+        barEl.style.width = `${targetVal}%`; // CSS Transitionで伸びる
         
-        // Ticker for progress bar value label
+        // 数値テキストも0から目標値まで高速でカウントアップ
         let current = 0;
         const interval = setInterval(() => {
             current += 2;
@@ -734,9 +760,9 @@ function animateSingleProgressBar(barEl, valEl, targetVal) {
     }, 100);
 }
 
-// --- Draw Radar Chart with Chart.js ---
+// Chart.js を利用して詳細スコアのレーダーチャートを描画する関数
 function drawRadarChart() {
-    // Destroy previous chart if exists
+    // 既にチャートが存在する場合は破棄（再描画時のバグ防止）
     if (appState.radarChartInstance) {
         appState.radarChartInstance.destroy();
     }
@@ -751,10 +777,10 @@ function drawRadarChart() {
             datasets: [{
                 label: '顔パーツ骨格スコア',
                 data: [res.symmetry, res.goldenRatio, res.eyes, res.nose, res.mouth, res.contour],
-                backgroundColor: 'rgba(0, 242, 254, 0.15)',
+                backgroundColor: 'rgba(0, 242, 254, 0.15)', // 半透明のシアン
                 borderColor: 'rgba(0, 242, 254, 0.85)',
                 borderWidth: 1.5,
-                pointBackgroundColor: 'var(--accent-pink)',
+                pointBackgroundColor: 'var(--accent-pink)', // 特徴点はピンク
                 pointBorderColor: '#fff',
                 pointBorderWidth: 1.5,
                 pointRadius: 4,
@@ -766,16 +792,16 @@ function drawRadarChart() {
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    display: false // Hide legend
+                    display: false // 凡例は非表示
                 }
             },
             scales: {
                 r: {
                     angleLines: {
-                        color: 'rgba(255, 255, 255, 0.08)'
+                        color: 'rgba(255, 255, 255, 0.08)' // 軸の放射線の色
                     },
                     grid: {
-                        color: 'rgba(255, 255, 255, 0.08)'
+                        color: 'rgba(255, 255, 255, 0.08)' // 同心円の網目の色
                     },
                     pointLabels: {
                         color: 'var(--text-secondary)',
@@ -786,7 +812,7 @@ function drawRadarChart() {
                         }
                     },
                     ticks: {
-                        display: false,
+                        display: false, // 目盛り数値は非表示
                         maxTicksLimit: 5
                     },
                     suggestedMin: 30,
@@ -797,19 +823,19 @@ function drawRadarChart() {
     });
 }
 
-// --- Generate Downloadable Certificate Card (Canvas Export) ---
+// 診断結果を1枚の認定証画像 (PNG) として生成・ダウンロード出力する関数 (Canvas操作)
 function generateCertificateCard() {
-    // Create temporary offscreen canvas
+    // 高解像度のオフスクリーンキャンバスを生成 (幅800px × 高さ1000px)
     const cardCanvas = document.createElement('canvas');
     cardCanvas.width = 800;
     cardCanvas.height = 1000;
     const ctx = cardCanvas.getContext('2d');
     
-    // Draw background
+    // 背景を描画 (深宇宙のネイビーブラック)
     ctx.fillStyle = '#07080d';
     ctx.fillRect(0, 0, cardCanvas.width, cardCanvas.height);
     
-    // Draw futuristic neon background grid patterns
+    // バックグラウンドに薄いサイバー調のグリッド線を描画
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.015)';
     ctx.lineWidth = 1;
     for (let x = 0; x < cardCanvas.width; x += 40) {
@@ -825,17 +851,16 @@ function generateCertificateCard() {
         ctx.stroke();
     }
     
-    // Draw decorative border frame
+    // 装飾用の外枠二重線を描画 (シアンとパープル)
     ctx.strokeStyle = '#00f2fe';
     ctx.lineWidth = 2;
     ctx.strokeRect(30, 30, cardCanvas.width - 60, cardCanvas.height - 60);
     
-    // Outer secondary border
     ctx.strokeStyle = 'rgba(157, 78, 221, 0.3)';
     ctx.lineWidth = 1;
     ctx.strokeRect(40, 40, cardCanvas.width - 80, cardCanvas.height - 80);
     
-    // Title text
+    // ヘッダーテキスト (認定証のタイトル)
     ctx.font = 'bold 24px "Orbitron"';
     ctx.fillStyle = 'rgba(0, 242, 254, 0.85)';
     ctx.textAlign = 'center';
@@ -845,15 +870,15 @@ function generateCertificateCard() {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
     ctx.fillText('NEURAL SPECTRUM FACIAL GEOMETRY MAP', cardCanvas.width / 2, 115);
     
-    // Divider line
+    // 仕切り用の境界線
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
     ctx.beginPath();
     ctx.moveTo(80, 140);
     ctx.lineTo(cardCanvas.width - 80, 140);
     ctx.stroke();
     
-    // Draw User Image Snapshot in frame
-    const userImg = snapshotCanvas; // Holds user snapshot
+    // 中央枠線内にユーザーの顔のスナップショットを描画
+    const userImg = snapshotCanvas;
     const frameW = 440;
     const frameH = 330;
     const frameX = (cardCanvas.width - frameW) / 2;
@@ -863,41 +888,40 @@ function generateCertificateCard() {
     ctx.fillRect(frameX, frameY, frameW, frameH);
     ctx.drawImage(userImg, frameX, frameY, frameW, frameH);
     
-    // Draw snapshot frame border
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
     ctx.lineWidth = 2;
     ctx.strokeRect(frameX, frameY, frameW, frameH);
     
-    // Draw Face Type Badge
+    // 顔タイプバッジ枠線の描画
     ctx.fillStyle = 'rgba(0, 242, 254, 0.08)';
     ctx.fillRect(cardCanvas.width/2 - 150, 530, 300, 38);
     ctx.strokeStyle = 'rgba(0, 242, 254, 0.3)';
     ctx.lineWidth = 1;
     ctx.strokeRect(cardCanvas.width/2 - 150, 530, 300, 38);
     
+    // 顔タイプ名
     ctx.font = 'bold 15px "Noto Sans JP"';
     ctx.fillStyle = '#00f2fe';
     ctx.fillText(appState.results.faceType, cardCanvas.width/2, 554);
     
-    // Draw Large Score Block
+    // 総合顔偏差値の描画 (ネオングロウ効果を付与)
     ctx.font = 'bold 14px "Noto Sans JP"';
     ctx.fillStyle = '#909bb0';
     ctx.fillText('顔 偏 差 値 (SCORE)', cardCanvas.width/2, 620);
     
     ctx.font = 'bold 96px "Orbitron"';
-    // Draw neon score glow
     ctx.shadowColor = 'rgba(0, 242, 254, 0.6)';
     ctx.shadowBlur = 20;
     ctx.fillStyle = '#ffffff';
     ctx.fillText(appState.results.score.toFixed(1), cardCanvas.width/2, 715);
-    ctx.shadowBlur = 0; // Reset shadow
+    ctx.shadowBlur = 0; // ネオン効果を他パーツに影響させないためリセット
     
-    // Draw Grade
+    // 評価グレード
     ctx.font = 'bold 18px "Orbitron"';
     ctx.fillStyle = '#ff007f';
     ctx.fillText(appState.results.grade, cardCanvas.width/2, 755);
     
-    // Draw sub stats boxes
+    // 下部の左右2列に分けて、各パーツ別の詳細数値一覧を描画
     const statsXLeft = 100;
     const statsXRight = 450;
     const statsYStart = 800;
@@ -909,39 +933,41 @@ function generateCertificateCard() {
     
     const res = appState.results;
     
-    // Col 1
+    // 1列目 (左側)
     ctx.fillText(`左右対称性:  ${res.symmetry}%`, statsXLeft, statsYStart);
     ctx.fillText(`黄金比率:    ${res.goldenRatio}%`, statsXLeft, statsYStart + rowH);
     ctx.fillText(`目元比率:    ${res.eyes}%`, statsXLeft, statsYStart + rowH * 2);
     
-    // Col 2
+    // 2列目 (右側)
     ctx.fillText(`鼻すじ角度:  ${res.nose}%`, statsXRight, statsYStart);
     ctx.fillText(`口元バランス: ${res.mouth}%`, statsXRight, statsYStart + rowH);
     ctx.fillText(`輪郭ライン:  ${res.contour}%`, statsXRight, statsYStart + rowH * 2);
     
-    // Draw watermark info footer
+    // フッターのクレジット免責事項
     ctx.textAlign = 'center';
     ctx.font = '9px "Orbitron"';
     ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.fillText('ALL FACIAL SCAN PROTOCOLS COMPLETED LOCALLY ON DEVICE // NO DATA EXPORTED', cardCanvas.width/2, 955);
     
-    // Trigger download
+    // キャンバスをPNG形式のデータURLに変換し、aタグを作ってダウンロード発火
     const dataUrl = cardCanvas.toDataURL('image/png');
     const link = document.createElement('a');
     link.download = `AI-Facial-Analysis-Score-${res.score}.png`;
     link.href = dataUrl;
     link.click();
     
-    addTerminalLog('Report certificate card successfully exported and downloaded.', 'success');
+    addTerminalLog('診断結果の認定証画像が生成され、ダウンロードされました。', 'success');
 }
 
-// --- Toggle Camera Orientation ---
+// スマホ対応：インカメラ ⇄ アウトカメラの映像入力を切り替える処理
 function toggleCameraFacingMode() {
-    if (appState.isScanning) return; // Prevent switching mid-scan
+    if (appState.isScanning) return; // スキャン解析の進行中は切り替えをロック
     
+    // 現在のカメラの反対側の向きを設定
     appState.facingMode = (appState.facingMode === 'user') ? 'environment' : 'user';
     addTerminalLog(`カメラを切替中 (${appState.facingMode === 'user' ? 'インカメラ' : 'アウトカメラ'})...`, 'cyan');
     
+    // 既存のカメラ入力を切って、新しいカメラ設定で再起動
     stopCameraStream();
     startWebcamMode();
 }
