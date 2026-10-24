@@ -11,6 +11,7 @@ let appState = {
     scanTimer: null,              // スキャンアニメーション用のタイマーオブジェクト
     radarChartInstance: null,      // Chart.js のレーダーチャートインスタンス
     facingMode: 'user',           // カメラの向き ('user':インカメラ, 'environment':アウトカメラ)
+    rawPhotoCanvas: null,         // 線なしの純粋な撮影写真を保持するオフスクリーンCanvas
     
     // 顔のガイド枠（楕円）を基準とした、特徴点の相対的な描画範囲
     landmarks: {
@@ -64,6 +65,7 @@ const btnStartUpload = document.getElementById('btnStartUpload');
 const btnTriggerScan = document.getElementById('btnTriggerScan');
 const btnCancelScan = document.getElementById('btnCancelScan');
 const btnSaveCard = document.getElementById('btnSaveCard');
+const btnSavePhoto = document.getElementById('btnSavePhoto');
 const btnRestart = document.getElementById('btnRestart');
 const btnSwitchCamera = document.getElementById('btnSwitchCamera');
 
@@ -121,6 +123,7 @@ function initEventListeners() {
     // 3. 結果表示画面のアクション
     btnRestart.addEventListener('click', resetToHome);
     btnSaveCard.addEventListener('click', generateCertificateCard);
+    btnSavePhoto.addEventListener('click', saveCapturedPhoto);
     
     // 4. 結果画面の詳細情報タブ切り替え処理
     const tabButtons = document.querySelectorAll('.tab-btn');
@@ -683,13 +686,79 @@ function generateAdviceText() {
     adviceAccessories.textContent = accTip;
 }
 
-// スキャナー画面の最終的なCanvas描画内容（自撮り画像＋HUD枠線）を、結果表示カード用のプレビューCanvasに丸ごとコピーする関数
+// スキャン完了時のカメラ映像（またはアップロード画像）を保存用Canvasと結果プレビューCanvasに記録する関数
 function captureScanSnapshot() {
-    const snapCtx = snapshotCanvas.getContext('2d');
-    snapshotCanvas.width = scannerCanvas.width;
-    snapshotCanvas.height = scannerCanvas.height;
+    const w = scannerCanvas.width;
+    const h = scannerCanvas.height;
     
-    // スキャナーの描画結果をそのまま画像として転写
+    // 1. 線なしの純粋な撮影写真を保持するオフスクリーンCanvasを作成
+    const rawCanvas = document.createElement('canvas');
+    rawCanvas.width = w;
+    rawCanvas.height = h;
+    const rawCtx = rawCanvas.getContext('2d');
+    
+    // 背景を黒で塗りつぶし
+    rawCtx.fillStyle = '#030407';
+    rawCtx.fillRect(0, 0, w, h);
+    
+    if (appState.imageSource === 'camera' && webcamVideo.videoWidth > 0) {
+        // カメラ映像を object-fit: cover と同じ比率で中央トリミング描画
+        const vw = webcamVideo.videoWidth;
+        const vh = webcamVideo.videoHeight;
+        const videoRatio = vw / vh;
+        const canvasRatio = w / h;
+        let drawW, drawH, drawX, drawY;
+        
+        if (videoRatio > canvasRatio) {
+            drawH = h;
+            drawW = h * videoRatio;
+            drawX = (w - drawW) / 2;
+            drawY = 0;
+        } else {
+            drawW = w;
+            drawH = w / videoRatio;
+            drawX = 0;
+            drawY = (h - drawH) / 2;
+        }
+        
+        rawCtx.save();
+        // インカメラ（自撮り）の場合はプレビュー表示に合わせて左右反転して記録
+        if (appState.facingMode === 'user') {
+            rawCtx.translate(w, 0);
+            rawCtx.scale(-1, 1);
+        }
+        rawCtx.drawImage(webcamVideo, drawX, drawY, drawW, drawH);
+        rawCtx.restore();
+    } else if (appState.imageSource === 'file' && appState.uploadedImage) {
+        // アップロード画像の場合、アスペクト比を保って中央に描画
+        const img = appState.uploadedImage;
+        const imgRatio = img.width / img.height;
+        const canvasRatio = w / h;
+        let drawW, drawH, drawX, drawY;
+        
+        if (imgRatio > canvasRatio) {
+            drawW = w;
+            drawH = w / imgRatio;
+            drawX = 0;
+            drawY = (h - drawH) / 2;
+        } else {
+            drawH = h;
+            drawW = h * imgRatio;
+            drawX = (w - drawW) / 2;
+            drawY = 0;
+        }
+        rawCtx.drawImage(img, drawX, drawY, drawW, drawH);
+    }
+    
+    // 純粋な写真データをStateに保持（「撮影した写真を保存」ボタン用）
+    appState.rawPhotoCanvas = rawCanvas;
+    
+    // 2. 結果表示用のプレビューCanvasには、写真の下地の上にHUD枠線（scannerCanvas）を重ねて描画
+    const snapCtx = snapshotCanvas.getContext('2d');
+    snapshotCanvas.width = w;
+    snapshotCanvas.height = h;
+    
+    snapCtx.drawImage(rawCanvas, 0, 0);
     snapCtx.drawImage(scannerCanvas, 0, 0);
 }
 
@@ -943,11 +1012,15 @@ function generateCertificateCard() {
     ctx.fillText(`口元バランス: ${res.mouth}%`, statsXRight, statsYStart + rowH);
     ctx.fillText(`輪郭ライン:  ${res.contour}%`, statsXRight, statsYStart + rowH * 2);
     
-    // フッターのクレジット免責事項
+    // フッターのクレジット免責事項と著作権表示
     ctx.textAlign = 'center';
     ctx.font = '9px "Orbitron"';
     ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.fillText('ALL FACIAL SCAN PROTOCOLS COMPLETED LOCALLY ON DEVICE // NO DATA EXPORTED', cardCanvas.width/2, 955);
+    ctx.fillText('ALL FACIAL SCAN PROTOCOLS COMPLETED LOCALLY ON DEVICE // NO DATA EXPORTED', cardCanvas.width/2, 928);
+    
+    ctx.font = 'bold 12px "Noto Sans JP", "Inter", sans-serif';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.fillText('© 2026 ちんいち. All Rights Reserved.', cardCanvas.width/2, 952);
     
     // キャンバスをPNG形式のデータURLに変換し、aタグを作ってダウンロード発火
     const dataUrl = cardCanvas.toDataURL('image/png');
@@ -971,3 +1044,19 @@ function toggleCameraFacingMode() {
     stopCameraStream();
     startWebcamMode();
 }
+
+// 撮影した写真（HUD枠線なしの純粋な画像）をPNGファイルとして端末に保存する関数
+function saveCapturedPhoto() {
+    if (!appState.rawPhotoCanvas) return;
+    
+    // 保持しておいた線なしの写真CanvasをPNGデータURLに変換し、ダウンロードを発火
+    const dataUrl = appState.rawPhotoCanvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    link.download = `Captured-Face-Photo-${timestamp}.png`;
+    link.href = dataUrl;
+    link.click();
+    
+    addTerminalLog('撮影した写真（フレームなし）が保存されました。', 'success');
+}
+
