@@ -148,15 +148,31 @@ function initEventListeners() {
     });
 }
 
+// キャンバスの描画サイズを親要素の実際の表示サイズに同期する関数
+function syncScannerCanvasSize() {
+    const parent = scannerCanvas.parentElement;
+    if (!parent) return;
+    const rect = parent.getBoundingClientRect();
+    const w = Math.round(rect.width);
+    const h = Math.round(rect.height);
+    // 非表示時(0x0)はサイズを上書きしない
+    if (w > 0 && h > 0 && (scannerCanvas.width !== w || scannerCanvas.height !== h)) {
+        scannerCanvas.width = w;
+        scannerCanvas.height = h;
+    }
+}
+
 // 画面のリサイズに合わせて、描画用キャンバスのサイズを自動追従させる処理
 function setupCanvasResizing() {
     const resizeObserver = new ResizeObserver(entries => {
         for (let entry of entries) {
-            const width = entry.contentRect.width;
-            const height = entry.contentRect.height;
-            // HTML上のサイズとキャンバスの描画バッファサイズを一致させる
-            scannerCanvas.width = width;
-            scannerCanvas.height = height;
+            const width = Math.round(entry.contentRect.width);
+            const height = Math.round(entry.contentRect.height);
+            // 非表示時(width=0, height=0)にキャンバスが消去されないようガード
+            if (width > 0 && height > 0 && (scannerCanvas.width !== width || scannerCanvas.height !== height)) {
+                scannerCanvas.width = width;
+                scannerCanvas.height = height;
+            }
         }
     });
     resizeObserver.observe(scannerCanvas.parentElement);
@@ -197,7 +213,9 @@ function addTerminalLog(message, type = '') {
 async function startWebcamMode() {
     appState.imageSource = 'camera';
     appState.uploadedImage = null;
+    appState.rawPhotoCanvas = null;
     switchSection('sectionScanner');
+    syncScannerCanvasSize();
     
     // 顔位置合わせガイドとカメラ切り替えボタンを表示
     faceGuideOval.style.display = 'flex';
@@ -232,6 +250,8 @@ async function startWebcamMode() {
         // ビデオ要素にストリームを割り当てて再生開始
         webcamVideo.srcObject = appState.stream;
         webcamVideo.style.display = 'block';
+        await webcamVideo.play();
+        syncScannerCanvasSize();
         addTerminalLog(`カメラ接続成功: ${appState.facingMode === 'user' ? 'インカメラ' : 'アウトカメラ'}を有効化`, 'success');
         addTerminalLog('ガイド枠内に顔を合わせてスキャンを開始してください。', 'cyan');
         
@@ -248,12 +268,13 @@ async function startWebcamMode() {
     }
 }
 
-// ユーザーが写真ファイルを選択した時の処理
+// ユーザーが写真ファイルを選択（またはスマホのファイル選択からカメラ撮影）した時の処理
 function handleFileUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
     
     appState.imageSource = 'file';
+    appState.rawPhotoCanvas = null;
     
     // カメラが既に起動している場合はストリームを止める
     stopCameraStream();
@@ -265,9 +286,13 @@ function handleFileUpload(e) {
             appState.uploadedImage = img;
             switchSection('sectionScanner');
             
-            // ビデオ要素を非表示にして、アップロード画像を描画対象にする
+            // ビデオ要素とカメラ切替ボタンを非表示にして、アップロード画像を描画対象にする
             webcamVideo.style.display = 'none';
+            btnSwitchCamera.style.display = 'none';
             faceGuideOval.style.display = 'flex';
+            
+            // セクション表示直後にキャンバスサイズを同期
+            syncScannerCanvasSize();
             
             terminalLogs.innerHTML = '';
             addTerminalLog(`画像読み込み完了: ${file.name} (${img.width}x${img.height})`, 'success');
@@ -275,7 +300,7 @@ function handleFileUpload(e) {
             
             btnTriggerScan.classList.remove('disabled');
             
-            // 画像の描画とランドマーク座標の計算ループを一度呼び出す
+            // 画像の描画とランドマーク座標の計算ループを開始
             requestAnimationFrame(trackingLoop);
         };
         img.src = event.target.result;
@@ -320,15 +345,20 @@ function trackingLoop() {
     // スキャナー画面がアクティブでない場合はループを抜ける
     if (appState.currentSection !== 'sectionScanner') return;
     
+    syncScannerCanvasSize();
     const ctx = scannerCanvas.getContext('2d');
     const w = scannerCanvas.width;
     const h = scannerCanvas.height;
+    if (w === 0 || h === 0) {
+        requestAnimationFrame(trackingLoop);
+        return;
+    }
     
     // 前のフレームの描画をクリア
     ctx.clearRect(0, 0, w, h);
     
-    // 写真ファイル選択モードの場合は、アップロードされた画像をアスペクト比を保ってキャンバスに中央配置描画
     if (appState.imageSource === 'file' && appState.uploadedImage) {
+        // 写真ファイル選択モードの場合は、アップロードされた画像をアスペクト比を保ってキャンバスに中央配置描画
         const img = appState.uploadedImage;
         const imgRatio = img.width / img.height;
         const canvasRatio = w / h;
@@ -347,6 +377,9 @@ function trackingLoop() {
         }
         
         ctx.drawImage(img, drawX, drawY, drawW, drawH);
+    } else if (appState.imageSource === 'camera' && appState.isScanning && appState.rawPhotoCanvas) {
+        // カメラモードでスキャン開始後は、撮影した静止画をキャンバスに固定表示してスキャン演出を行う
+        ctx.drawImage(appState.rawPhotoCanvas, 0, 0, w, h);
     }
     
     // 現在のキャンバスサイズに基づいて、顔の特徴点（ダミー座標）を生成・更新
@@ -497,12 +530,16 @@ function drawFacialHUD(ctx, w, h) {
 function startScanningProcess() {
     if (appState.isScanning) return; // 既にスキャン中の場合は二重起動防止
     
+    // スキャン開始ボタンを押した瞬間のカメラ映像（またはアップロード画像）を静止画としてキャプチャ
+    captureRawPhoto();
+    
     appState.isScanning = true;
     appState.scanProgress = 0;
     
     // スキャン中はボタン操作を無効化
     btnTriggerScan.classList.add('disabled');
     btnCancelScan.classList.add('disabled');
+    btnSwitchCamera.style.display = 'none';
     
     // ガイド枠を「スキャン中（ピンク）」状態に切り替え
     faceGuideOval.classList.add('scanning');
@@ -616,7 +653,7 @@ function finalizeScanResults() {
     // 各スコア結果に基づいた美容・スタイリングアドバイステキストを生成
     generateAdviceText();
     
-    // スキャンキャンバスに描かれている内容（特徴点と顔写真）のスクリーンショットを一時保存用キャンバスにコピー
+    // 撮影した顔写真とHUD枠線を結果画面用のプレビューキャンバス（snapshotCanvas）に描画
     captureScanSnapshot();
     
     // カメラストリームの終了とUIの状態リセット
@@ -686,12 +723,12 @@ function generateAdviceText() {
     adviceAccessories.textContent = accTip;
 }
 
-// スキャン完了時のカメラ映像（またはアップロード画像）を保存用Canvasと結果プレビューCanvasに記録する関数
-function captureScanSnapshot() {
-    const w = scannerCanvas.width;
-    const h = scannerCanvas.height;
+// カメラ映像またはアップロード画像から、線なしの純粋な写真Canvas（appState.rawPhotoCanvas）を生成する関数
+function captureRawPhoto() {
+    syncScannerCanvasSize();
+    const w = scannerCanvas.width || 640;
+    const h = scannerCanvas.height || 480;
     
-    // 1. 線なしの純粋な撮影写真を保持するオフスクリーンCanvasを作成
     const rawCanvas = document.createElement('canvas');
     rawCanvas.width = w;
     rawCanvas.height = h;
@@ -750,16 +787,29 @@ function captureScanSnapshot() {
         rawCtx.drawImage(img, drawX, drawY, drawW, drawH);
     }
     
-    // 純粋な写真データをStateに保持（「撮影した写真を保存」ボタン用）
     appState.rawPhotoCanvas = rawCanvas;
+}
+
+// スキャン完了時に結果プレビューCanvas（snapshotCanvas）へ写真＋HUD枠線を描画する関数
+function captureScanSnapshot() {
+    if (!appState.rawPhotoCanvas) {
+        captureRawPhoto();
+    }
     
-    // 2. 結果表示用のプレビューCanvasには、写真の下地の上にHUD枠線（scannerCanvas）を重ねて描画
+    const rawCanvas = appState.rawPhotoCanvas;
+    const w = rawCanvas.width;
+    const h = rawCanvas.height;
+    
     const snapCtx = snapshotCanvas.getContext('2d');
     snapshotCanvas.width = w;
     snapshotCanvas.height = h;
     
-    snapCtx.drawImage(rawCanvas, 0, 0);
-    snapCtx.drawImage(scannerCanvas, 0, 0);
+    // 1. 下地として撮影した純粋な顔写真を描画
+    snapCtx.drawImage(rawCanvas, 0, 0, w, h);
+    
+    // 2. その上にHUDワイヤーフレームを重ねて描画
+    updateTrackingCoordinates(w, h);
+    drawFacialHUD(snapCtx, w, h);
 }
 
 // 結果画面が表示された時のカウンター・プログレスバーの演出を制御
